@@ -11,6 +11,7 @@ const SPEED = 7;
 const JUMP = 8.6;
 const BODY_R = 0.3;
 const BODY_H = 1.78;
+const EYE_H = 1.62; // first-person eye height above feet
 
 // leaves are passable so the player falls through canopies to the ground
 const NON_SOLID = new Set([BLOCK.AIR, BLOCK.WATER, BLOCK.OAK_LEAVES]);
@@ -132,25 +133,44 @@ export class Player {
   }
 
   moveAxis(axis, delta) {
-    if (delta === 0) return;
-    const prev = this.pos[axis];
+    if (axis === "y") {
+      if (delta === 0) return;
+      const prev = this.pos.y;
+      this.pos.y += delta;
+      if (this.overlapsSolid()) {
+        let lo = prev, hi = this.pos.y;
+        for (let i = 0; i < 10; i++) {
+          const mid = (lo + hi) / 2;
+          this.pos.y = mid;
+          if (this.overlapsSolid()) hi = mid; else lo = mid;
+        }
+        this.pos.y = lo;
+        if (delta < 0) { this.onGround = true; this.vel.y = 0; }
+        else this.vel.y = 0;
+      }
+      return;
+    }
+    // horizontal move with auto step-up (<=1 block), so 1-block steps don't trap the player
+    const prevX = this.pos.x, prevZ = this.pos.z, prevY = this.pos.y;
+    for (let step = 0; step < 2; step++) {
+      this.pos.x = prevX; this.pos.z = prevZ; this.pos.y = prevY;
+      if (step === 1) this.pos.y += 1.05; // try stepping up
+      if (axis === "x") this.pos.x += delta; else this.pos.z += delta;
+      if (!this.overlapsSolid()) { this.vel[axis] = 0; return; }
+    }
+    // fully blocked: binary-search back to first non-overlapping position at original height
+    this.pos.x = prevX; this.pos.z = prevZ; this.pos.y = prevY;
     this.pos[axis] += delta;
-    if (!this.overlapsSolid()) return;
-    // binary-search back to the first non-overlapping position (prevents embedding)
-    let lo = prev, hi = this.pos[axis];
+    let lo = prevX !== this.pos.x ? prevX : prevZ;
+    let hi = this.pos[axis];
+    this.pos[axis] = lo;
     for (let i = 0; i < 10; i++) {
       const mid = (lo + hi) / 2;
       this.pos[axis] = mid;
-      if (this.overlapsSolid()) hi = mid;
-      else lo = mid;
+      if (this.overlapsSolid()) hi = mid; else lo = mid;
     }
     this.pos[axis] = lo;
-    if (axis === "y") {
-      if (delta < 0) { this.onGround = true; this.vel.y = 0; }
-      else this.vel.y = 0;
-    } else {
-      this.vel[axis] = 0;
-    }
+    this.vel[axis] = 0;
   }
 
   update(dt) {
@@ -179,7 +199,8 @@ export class Player {
     this.moveAxis("z", this.vel.z * dt);
     this.moveAxis("y", this.vel.y * dt);
 
-    this.camera.position.copy(this.pos);
+    // first-person camera at EYE height above the feet (never embedded in ground)
+    this.camera.position.set(this.pos.x, this.pos.y + EYE_H, this.pos.z);
   }
 
   playerChunk() {

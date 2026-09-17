@@ -108,19 +108,24 @@ for (const vp of VIEWPORTS) {
     console.log(`${stat}/${a.name} saved ${fn} (fps=${fps.avg.toFixed(1)}, loaded=${fps.loaded}, err=${errors.length})`);
   }
 
-  // cross-chunk movement continuity: walk forward across chunk boundaries,
-  // capturing frames to prove no gaps/seams/floating terrain during motion
-  await page.evaluate(() => { const v = window.__voxel; v.player.yaw = 0.0; v.player.pitch = 0.0; });
-  for (let i = 0; i < 6; i++) {
+  // cross-chunk movement continuity: walk in the clear -X direction across the
+  // x=-16 chunk boundary (chunk -1 -> -2), capturing frames to prove no
+  // gaps/seams/floating terrain during motion (yaw=PI/2 => forward = -X).
+  await page.evaluate(() => { const v = window.__voxel; v.player.yaw = Math.PI / 2; v.player.pitch = 0; });
+  const startX = await page.evaluate(() => window.__voxel.player.pos.x);
+  let crossed = false;
+  for (let i = 0; i < 4; i++) {
     await page.evaluate(() => { const v = window.__voxel; v.player.keys.add("KeyW"); });
     await page.waitForTimeout(600);
     await page.evaluate(() => { const v = window.__voxel; v.player.keys.delete("KeyW"); });
     const mfn = join(outDir, `${stat}_move${i}.png`);
     await page.screenshot({ path: mfn, fullPage: false });
     const mi = await page.evaluate(() => { const v = window.__voxel; return { x:+v.player.pos.x.toFixed(1), y:+v.player.pos.y.toFixed(1), z:+v.player.pos.z.toFixed(1), emb:v.player.overlapsSolid() }; });
+    if (mi.x < -15.9 && !crossed) { crossed = true; console.log(`${stat}/CROSSED chunk-boundary x=-16 at move${i} (x=${mi.x})`); }
     console.log(`${stat}/move${i} ${mfn} pos=${JSON.stringify(mi)}`);
     if (mi.emb) globalErrors.push(`embedded at move${i}`);
   }
+  console.log(`${stat}/movement startX=${startX.toFixed(1)} finalX=${(await page.evaluate(() => window.__voxel.player.pos.x)).toFixed(1)} crossedX16=${crossed}`);
   await page.close();
 }
 

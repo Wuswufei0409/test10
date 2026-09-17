@@ -6,6 +6,7 @@ import { HUD } from "./render/hud.js";
 import { World } from "./world/World.js";
 import { DEFAULT_SEED } from "./config.js";
 import { tileUV, BLOCKS_PER_ROW, TILE, TILE_BY_BLOCK } from "./render/textures.js";
+import * as THREE from "three";
 
 function readSeed() {
   const p = new URLSearchParams(window.location.search);
@@ -72,7 +73,7 @@ function init() {
 
   // debug/evidence surface (used by headless screenshot & reviewers)
   window.__voxel = {
-    player, world, engine, hud, seed,
+    player, world, engine, hud, seed, THREE,
     loadedChunks: () => world.chunks.size,
   };
 }

@@ -1,0 +1,5 @@
+[console] warning [.WebGL-0x33402337600]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels
+[console] warning [.WebGL-0x33402337600]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels
+[console] warning [.WebGL-0x33402337600]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels
+[console] warning [.WebGL-0x33402337600]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)
+RESULT {"voxel":true,"hasApp":true,"appHTML":"has"}

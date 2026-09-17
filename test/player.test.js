@@ -63,4 +63,39 @@ describe("Player spawn / collision root cause", () => {
     p.update(0.016);
     expect(p.overlapsSolid()).toBe(false);
   });
+
+  it("camera renders from eye height (feet + 1.62), never at the ground surface", () => {
+    const p = makePlayer();
+    p.update(0.016); // render loop sets camera.position from the player feet
+    expect(p.overlapsSolid()).toBe(false);
+    // camera sits exactly eye height above the feet (prevents see-through /
+    // huge grazing near-surface when looking down/level)
+    expect(p.camera.position.x).toBe(p.pos.x);
+    expect(p.camera.position.z).toBe(p.pos.z);
+    expect(p.camera.position.y).toBeCloseTo(p.pos.y + 1.62, 5);
+    // eye is inside the body AABB and not embedded in terrain
+    const eye = Math.floor(p.camera.position.y);
+    expect(p.isSolid(Math.floor(p.pos.x), eye, Math.floor(p.pos.z))).toBe(false);
+  });
+
+  it("auto step-up: a 1-block step does not trap the player horizontally", () => {
+    // flat ground at surface-top y=31, a +1 step to surface-top y=32 at x>=10
+    const h = (x) => (x >= 10 ? 32 : 31);
+    const fake = {
+      getBlock(x, y, z) { return y < h(x) ? BLOCK.STONE : BLOCK.AIR; },
+      getColumn(x, z) {
+        const col = new Array(70).fill(BLOCK.AIR);
+        for (let y = 0; y < h(x); y++) col[y] = BLOCK.STONE;
+        return col;
+      },
+    };
+    const p = new Player({ rotation: { order: "YXZ", y: 0, x: 0 }, position: new THREE.Vector3() }, fake, { requestPointerLock() {} });
+    p.pos.set(8.5, 31.01, 8.5).clone; // low side
+    p.pos.set(8.5, 31.01, 8.5);
+    p.moveAxis("x", 3); // walk across the x=10 step (to x=11.5)
+    expect(p.overlapsSolid()).toBe(false);
+    expect(p.pos.x).toBeGreaterThan(10.9); // crossed onto the raised step
+    // and it stands on the step surface (feet ~ step top + margin)
+    expect(p.pos.y).toBeGreaterThan(31.9);
+  });
 });

@@ -109,8 +109,6 @@ export class Engine {
       else if (!near && pair.waterAdded) { pair.g.remove(pair.g.children.find((c) => c.geometry === pair.water)); pair.waterAdded = false; }
     }
   }
-    }
-  }
 
   disposeGeom(g) {
     if (g) g.dispose();

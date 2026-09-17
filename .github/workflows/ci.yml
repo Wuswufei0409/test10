@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+    branches: [main, 'w1/**', '**/MUL-71/**']
+  pull_request:
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Unit tests (core logic + meshing)
+        run: npm test
+
+      - name: Fixed-seed smoke (biomes/depth/climate/repro)
+        run: npm run smoke
+
+      - name: Deploy health check
+        run: npm run health

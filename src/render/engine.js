@@ -17,7 +17,7 @@ export class Engine {
     container.appendChild(this.renderer.domElement);
 
     this.scene = new THREE.Scene();
-    this.scene.fog = new THREE.Fog(0xaee3ff, 60, 220);
+    this.scene.fog = new THREE.Fog(0xaee3ff, 25, 80);
 
     // sky dome
     this.sky = new THREE.Mesh(
@@ -62,8 +62,8 @@ export class Engine {
     this.waterMat = new THREE.MeshLambertMaterial({
       map: this.tex,
       transparent: true,
-      opacity: 0.72,
-      depthWrite: false,
+      opacity: 0.92,      // near-opaque so the ocean reads as a solid body, not a floating see-through grid
+      depthWrite: true,
     });
 
     this.chunkGroup = new THREE.Group();

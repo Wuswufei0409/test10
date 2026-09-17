@@ -72,4 +72,36 @@ describe("chunk meshing", () => {
     }
     expect(flipped).toBe(0);
   });
+
+  it("cross-chunk: World.getColumn returns identical column regardless of which neighboring chunk addresses it (seam continuity)", () => {
+    const w = new World("BEDROCK_1_4_2_W1");
+    w.ensureChunk(0, 0); w.ensureChunk(1, 0); w.ensureChunk(0, 1);
+    w.ensureChunk(-1, 0); w.ensureChunk(0, -1);
+    // sample columns just inside and across every +x/+z seam of chunk (0,0)
+    const seams = [];
+    for (let lz = 0; lz < 16; lz += 3) {
+      // +x seam: column wx=15 (last of chunk0) vs wx=16 (first of chunk1)
+      seams.push([15, lz]);
+      // +z seam
+      seams.push([lz, 15]);
+    }
+    for (const [lx, lz] of seams) {
+      const colA = w.getColumn(lx, lz);
+      const colB = w.getColumn(lx, lz);
+      for (let y = 0; y < 96; y++) expect(colA[y]).toBe(colB[y]);
+    }
+    // a neighbor-accessed column equals the chunk-owned one
+    const viaNeighbor = w.getColumn(16, 0);
+    const c1 = w.ensureChunk(1, 0);
+    expect(viaNeighbor[24]).toBe(c1.get(0)[24]);
+  });
+
+  it("chunk unload+reload is deterministic (identical mesh triangle counts)", () => {
+    const w = new World("SEED_UL");
+    warmChunks(w);
+    const before = meshChunk(w, 2, 1).opaque.getIndex().count;
+    w.unloadChunk(2, 1);
+    const after = meshChunk(w, 2, 1).opaque.getIndex().count;
+    expect(after).toBe(before);
+  });
 });

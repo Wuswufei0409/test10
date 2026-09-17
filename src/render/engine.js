@@ -6,8 +6,12 @@ import { CHUNK_SIZE, RENDER_DISTANCE, WORLD_HEIGHT } from "../config.js";
 
 export class Engine {
   constructor(container) {
-    this.renderer = new THREE.WebGLRenderer({ antialias: true });
-    this.renderer.setPixelRatio(window.devicePixelRatio);
+    this.renderer = new THREE.WebGLRenderer({
+      antialias: false, // software AA is costly; voxels don't need it
+      powerPreference: "high-performance",
+    });
+    // cap pixel ratio to bound fill cost on hi-DPI displays (perf target ~30fps)
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
     this.renderer.setSize(container.clientWidth, container.clientHeight);
     this.renderer.setClearColor(0x87ceeb, 1);
     container.appendChild(this.renderer.domElement);
@@ -64,19 +68,18 @@ export class Engine {
 
     this.chunkGroup = new THREE.Group();
     this.scene.add(this.chunkGroup);
-    this.loaded = new Set();
-    this.chunkMeshes = new Map(); // key -> THREE.Group
+    this.chunkMeshes = new Map(); // key -> { opaque, water } meshes (per-chunk frustum culling)
   }
 
   updateChunks(world, playerChunkX, playerChunkZ) {
     // unload far chunks
-    for (const [k, group] of Array.from(this.chunkMeshes)) {
+    for (const [k, pair] of Array.from(this.chunkMeshes)) {
       const [cx, cz] = k.split(",").map(Number);
       if (Math.abs(cx - playerChunkX) > RENDER_DISTANCE + 1 || Math.abs(cz - playerChunkZ) > RENDER_DISTANCE + 1) {
         world.unloadChunk(cx, cz);
-        this.chunkGroup.remove(group);
+        this.chunkGroup.remove(pair.g);
+        pair.g.traverse((o) => o.geometry && o.geometry.dispose());
         this.chunkMeshes.delete(k);
-        this.loaded.delete(k);
       }
     }
     // load + mesh nearby
@@ -86,15 +89,18 @@ export class Engine {
         if (this.chunkMeshes.has(k)) continue;
         world.ensureChunk(cx, cz);
         const mesh = meshChunk(world, cx, cz);
-        const group = new THREE.Group();
-        if (mesh.opaque) group.add(new THREE.Mesh(mesh.opaque, this.texMat));
-        if (mesh.water) group.add(new THREE.Mesh(mesh.water, this.waterMat));
-        group.position.set(0, 0, 0); // built in world coords
-        this.chunkGroup.add(group);
-        this.chunkMeshes.set(k, group);
-        this.loaded.add(k);
+        const g = new THREE.Group();
+        if (mesh.opaque) g.add(new THREE.Mesh(mesh.opaque, this.texMat));
+        if (mesh.water) g.add(new THREE.Mesh(mesh.water, this.waterMat));
+        g.position.set(0, 0, 0); // built in world coords
+        this.chunkGroup.add(g);
+        this.chunkMeshes.set(k, { g, opaque: mesh.opaque, water: mesh.water });
       }
     }
+  }
+
+  disposeGeom(g) {
+    if (g) g.dispose();
   }
 
   resize(w, h) {

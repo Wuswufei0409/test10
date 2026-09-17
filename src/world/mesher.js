@@ -37,18 +37,45 @@ function faceFor(blockValue, axis, corner) {
   return uvs;
 }
 
-// Emit one cube face. out: { positions, normals, uvs, indices }
+// Emit one cube face. Sorts the 4 corners into a proper CCW cyclic order around
+// the face centroid (guarantees outward winding on every axis) so a
+// front-face-culled material never drops or flips a side. out: geometry arrays.
 function pushFace(out, cx, cy, cz, corners, normal, uvTile) {
+  const c = corners.map((p) => [cx + p[0], cy + p[1], cz + p[2]]);
+  // face-plane basis (u = an edge direction, v = normal x u)
+  const u = [c[1][0] - c[0][0], c[1][1] - c[0][1], c[1][2] - c[0][2]];
+  const v = [
+    normal[1] * u[2] - normal[2] * u[1],
+    normal[2] * u[0] - normal[0] * u[2],
+    normal[0] * u[1] - normal[1] * u[0],
+  ];
+  const ox = (c[0][0] + c[1][0] + c[2][0] + c[3][0]) / 4;
+  const oy = (c[0][1] + c[1][1] + c[2][1] + c[3][1]) / 4;
+  const oz = (c[0][2] + c[1][2] + c[2][2] + c[3][2]) / 4;
+  // cyclic order by angle around the centroid in the (u,v) plane
+  const withA = c.map((p) => {
+    const dx = p[0] - ox, dy = p[1] - oy, dz = p[2] - oz;
+    return { a: Math.atan2(dx * v[0] + dy * v[1] + dz * v[2], dx * u[0] + dy * u[1] + dz * u[2]), p };
+  });
+  withA.sort((a, b) => a.a - b.a);
+  const sorted = withA.map((w) => w.p);
+  // orient CCW to match the outward normal
+  const e1 = [sorted[1][0] - sorted[0][0], sorted[1][1] - sorted[0][1], sorted[1][2] - sorted[0][2]];
+  const e2 = [sorted[2][0] - sorted[0][0], sorted[2][1] - sorted[0][1], sorted[2][2] - sorted[0][2]];
+  const cr = [e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2], e1[0] * e2[1] - e1[1] * e2[0]];
+  const order = cr[0] * normal[0] + cr[1] * normal[1] + cr[2] * normal[2] > 0
+    ? sorted
+    : [sorted[3], sorted[2], sorted[1], sorted[0]];
+
   const base = out.positions.length / 3;
-  for (const c of corners) {
-    out.positions.push(cx + c[0], cy + c[1], cz + c[2]);
+  for (const p of order) {
+    out.positions.push(p[0], p[1], p[2]);
     out.normals.push(normal[0], normal[1], normal[2]);
   }
   const { u0, v0, u1, v1 } = tileUV(uvTile);
-  // 4 texture corners
   out.uvs.push(u0, v1, u1, v1, u0, v0, u1, v0);
-  // two triangles
-  out.indices.push(base, base + 1, base + 2, base + 1, base + 3, base + 2);
+  // two triangles, both CCW for a CCW quad
+  out.indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
 }
 
 // Mesh a chunk. `world` provides getColumn(wx,wz) -> column array (bottom->top).

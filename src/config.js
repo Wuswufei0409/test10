@@ -11,7 +11,7 @@ export const DEEP_OCEAN_THRESHOLD = 15; // height below which ocean is "deep"
 export const SHALLOW_OCEAN_THRESHOLD = SEA_LEVEL - 6;
 
 // Render distance in chunks around the player.
-export const RENDER_DISTANCE = 4;
+export const RENDER_DISTANCE = 3;
 
 // World-gen noise scales.
 export const HEIGHT_SCALE = 0.0065;

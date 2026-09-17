@@ -49,4 +49,27 @@ describe("chunk meshing", () => {
     const mb = meshChunk(b, 0, 0);
     expect(ma.opaque.getIndex().count).toBe(mb.opaque.getIndex().count);
   });
+
+  it("every triangle winds outward (matches its vertex normal) — no flipped/hole faces", () => {
+    const w = new World("BEDROCK_1_4_2_W1");
+    warmChunks(w);
+    const m = meshChunk(w, 0, 0);
+    const geo = m.opaque;
+    const pos = geo.getAttribute("position");
+    const nrm = geo.getAttribute("normal");
+    const idx = geo.getIndex().array;
+    let flipped = 0;
+    for (let t = 0; t < idx.length; t += 3) {
+      const a = idx[t] * 3, b = idx[t + 1] * 3, c = idx[t + 2] * 3;
+      const ax = pos.getX(idx[t]), ay = pos.getY(idx[t]), az = pos.getZ(idx[t]);
+      const e1x = pos.getX(idx[t + 1]) - ax, e1y = pos.getY(idx[t + 1]) - ay, e1z = pos.getZ(idx[t + 1]) - az;
+      const e2x = pos.getX(idx[t + 2]) - ax, e2y = pos.getY(idx[t + 2]) - ay, e2z = pos.getZ(idx[t + 2]) - az;
+      const nx = e1y * e2z - e1z * e2y;
+      const ny = e1z * e2x - e1x * e2z;
+      const nz = e1x * e2y - e1y * e2x;
+      const vn = nrm.getX(idx[t]) * nx + nrm.getY(idx[t]) * ny + nrm.getZ(idx[t]) * nz;
+      if (vn < 0) flipped++;
+    }
+    expect(flipped).toBe(0);
+  });
 });

@@ -69,6 +69,12 @@ function init() {
     engine.render();
   }
   requestAnimationFrame(loop);
+
+  // debug/evidence surface (used by headless screenshot & reviewers)
+  window.__voxel = {
+    player, world, engine, hud, seed,
+    loadedChunks: () => world.chunks.size,
+  };
 }
 
 init();

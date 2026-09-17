@@ -75,39 +75,59 @@ export class Player {
     return false;
   }
 
+  flatSurfaceAt(x, z) {
+    const col = this.world.getColumn(x, z);
+    for (let y = 90; y >= 0; y--) {
+      const b = col[y];
+      if (b !== BLOCK.AIR && b !== BLOCK.WATER && b !== BLOCK.OAK_LEAVES) return y;
+    }
+    return -1;
+  }
+
   spawn() {
-    // Search outward from the origin for an open, walkable landing spot:
-    // a ground block that is not under water and has clear airspace above.
-    const R = 6;
-    const ground = new Set([BLOCK.GRASS, BLOCK.DIRT, BLOCK.SAND, BLOCK.STONE, BLOCK.SANDSTONE, BLOCK.SNOW]);
+    // Prefer a FLAT, OPEN, dry landing spot with clear sky above — not at the
+    // base of a cliff/mountain and not in/under a tree canopy. Search outward.
+    const R = 14;
+    const walk = new Set([BLOCK.GRASS, BLOCK.DIRT, BLOCK.SAND, BLOCK.STONE, BLOCK.SANDSTONE, BLOCK.SNOW]);
+    let best = null;
     for (let dx = -R; dx <= R; dx++) {
       for (let dz = -R; dz <= R; dz++) {
         const x = 8 + dx, z = 8 + dz;
-        for (let y = 68; y > 0; y--) {
-          const b = this.world.getBlock(x, y, z);
-          if (b === BLOCK.AIR || b === BLOCK.WATER || b === BLOCK.OAK_LEAVES) continue;
-          // first solid from top is the surface; accept if walkable + open air above
-          if (!ground.has(b)) break;
-          let clear = true;
-          for (let k = y + 1; k <= y + 6; k++) {
-            if (this.isSolid(x, k, z)) { clear = false; break; }
-          }
-          if (clear) {
-            this.pos.set(x + 0.5, y + 1.01, z + 0.5);
-            this.vel.set(0, 0, 0);
-            this.onGround = true;
-            return;
-          }
-          break; // solid but not clear (tree/overhang) - try next column
+        const surf = this.flatSurfaceAt(x, z);
+        if (surf < 0) continue;
+        const g = this.world.getBlock(x, surf, z);
+        if (!walk.has(g)) continue;
+        if (this.world.getBlock(x, surf + 1, z) === BLOCK.WATER) continue; // submerged
+        // clear (non-solid) air above
+        let clear = true;
+        for (let k = surf + 1; k <= surf + 6; k++) {
+          const bb = this.world.getBlock(x, k, z);
+          if (bb !== BLOCK.AIR && bb !== BLOCK.OAK_LEAVES) { clear = false; break; }
         }
+        if (!clear) continue;
+        // flatness: all surface heights within a 5x5 area within +/-2
+        let flat = true;
+        for (let ax = -2; ax <= 2 && flat; ax++) {
+          for (let az = -2; az <= 2; az++) {
+            const s = this.flatSurfaceAt(x + ax, z + az);
+            if (s < 0 || Math.abs(s - surf) > 2) { flat = false; break; }
+          }
+        }
+        if (!flat) continue;
+        // prefer low, gentle plains (not high mountains, not oceanbed)
+        const score = 200 - Math.abs(surf - 26) - (surf > 70 ? 500 : 0);
+        if (!best || score > best.score) best = { x, z, surf, score };
       }
+    }
+    if (best) {
+      this.pos.set(best.x + 0.5, best.surf + 1.01, best.z + 0.5);
+      this.vel.set(0, 0, 0);
+      this.onGround = true;
+      return;
     }
     // fallback: stand on the highest solid at the origin column
     for (let y = 68; y > 1; y--) {
-      if (this.isSolid(Math.floor(this.pos.x), y, Math.floor(this.pos.z))) {
-        this.pos.y = y + 1;
-        break;
-      }
+      if (this.isSolid(8, y, 8)) { this.pos.set(8.5, y + 1, 8.5); break; }
     }
   }
 

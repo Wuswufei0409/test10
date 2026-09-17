@@ -4,6 +4,9 @@ import { meshChunk } from "../world/mesher.js";
 import { buildAtlas } from "./textures.js";
 import { CHUNK_SIZE, RENDER_DISTANCE, WORLD_HEIGHT } from "../config.js";
 
+// only near chunks render the transparent water mesh (outer water is fogged out)
+const WATER_RING = 2;
+
 export class Engine {
   constructor(container) {
     this.renderer = new THREE.WebGLRenderer({
@@ -17,11 +20,11 @@ export class Engine {
     container.appendChild(this.renderer.domElement);
 
     this.scene = new THREE.Scene();
-    this.scene.fog = new THREE.Fog(0xaee3ff, 60, 200);
+    this.scene.fog = new THREE.Fog(0xaee3ff, 40, 95);
 
     // sky dome
     this.sky = new THREE.Mesh(
-      new THREE.SphereGeometry(480, 24, 16),
+      new THREE.SphereGeometry(480, 16, 8),
       new THREE.ShaderMaterial({
         side: THREE.BackSide,
         fog: false,
@@ -91,11 +94,21 @@ export class Engine {
         const mesh = meshChunk(world, cx, cz);
         const g = new THREE.Group();
         if (mesh.opaque) g.add(new THREE.Mesh(mesh.opaque, this.texMat));
-        if (mesh.water) g.add(new THREE.Mesh(mesh.water, this.waterMat));
         g.position.set(0, 0, 0); // built in world coords
         this.chunkGroup.add(g);
-        this.chunkMeshes.set(k, { g, opaque: mesh.opaque, water: mesh.water });
+        this.chunkMeshes.set(k, { g, opaque: mesh.opaque, water: mesh.water, waterAdded: false });
       }
+    }
+    // maintain the transparent-water ring: add water meshes for near chunks,
+    // remove for far ones (fog hides outer water; saves software-render fill)
+    for (const [k, pair] of this.chunkMeshes) {
+      const [cx, cz] = k.split(",").map(Number);
+      const dist = Math.max(Math.abs(cx - playerChunkX), Math.abs(cz - playerChunkZ));
+      const near = dist <= WATER_RING;
+      if (near && !pair.waterAdded && pair.water) { pair.g.add(new THREE.Mesh(pair.water, this.waterMat)); pair.waterAdded = true; }
+      else if (!near && pair.waterAdded) { pair.g.remove(pair.g.children.find((c) => c.geometry === pair.water)); pair.waterAdded = false; }
+    }
+  }
     }
   }
 

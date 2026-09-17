@@ -47,9 +47,13 @@ for (const vp of VIEWPORTS) {
   await page.goto(url, { waitUntil: "networkidle", timeout: 30000 });
   await page.waitForTimeout(2500);
   await page.evaluate(() => document.getElementById("app")?.requestPointerLock?.bind?.call || 0); // noop guard
-  // wait for chunks to load + first mesh
+  // wait for chunks to be generated AND fully meshed into the scene (RD4 => 81)
   await page.waitForFunction(() => window.__voxel && window.__voxel.loadedChunks() > 30, { timeout: 20000 }).catch(() => {});
-  await page.waitForTimeout(2000);
+  await page.waitForFunction(() => {
+    const v = window.__voxel;
+    return v && v.engine && v.engine.chunkMeshes && v.engine.chunkMeshes.size >= 70;
+  }, { timeout: 30000 }).catch(() => {});
+  await page.waitForTimeout(2500); // settle after full mesh so frames are steady
 
   // verify clean spawn: not embedded, ground below, open air above/at feet
   const spawnInfo = await page.evaluate(() => {

@@ -1,0 +1,23 @@
+{
+  "name": "voxelcrat-web",
+  "version": "0.1.0",
+  "description": "W1 module: first-person 3D voxel rendering, Bedrock-like HUD, reproducible seed world generation/chunks/biomes (Minecraft Bedrock 1.4.2 Web Replica).",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "smoke": "node scripts/smoke.mjs",
+    "health": "node scripts/health.mjs"
+  },
+"engines": { "node": ">=18" },
+  "dependencies": {
+    "three": "^0.160.0"
+  },
+  "devDependencies": {
+    "vite": "^5.0.0",
+    "vitest": "^1.0.0"
+  }
+}

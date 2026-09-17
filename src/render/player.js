@@ -1,12 +1,19 @@
 // First-person player: pointer-lock mouse look, WASD + space movement,
-// gravity and simple AABB collision against solid blocks.
+// gravity and robust AABB collision. Root-cause fix: spawns on clear open
+// ground (never on/in a tree canopy), treats leaves as passable, and resolves
+// the player AABB per-axis with binary-search contact so it can never become
+// embedded in solid blocks (which caused inverted/clipped near-view faces).
 import * as THREE from "three";
 import { BLOCK } from "../world/worldgen.js";
 
 const GRAVITY = -26;
 const SPEED = 7;
 const JUMP = 8.6;
-const EYE = 1.62;
+const BODY_R = 0.3;
+const BODY_H = 1.78;
+
+// leaves are passable so the player falls through canopies to the ground
+const NON_SOLID = new Set([BLOCK.AIR, BLOCK.WATER, BLOCK.OAK_LEAVES]);
 
 export class Player {
   constructor(camera, world, domElement) {
@@ -34,56 +41,95 @@ export class Player {
       if (!this.locked) this.dom.requestPointerLock && this.dom.requestPointerLock();
     };
 
-    document.addEventListener("keydown", this.onKeyDown);
-    document.addEventListener("keyup", this.onKeyUp);
-    document.addEventListener("mousemove", this.onMouseMove);
-    document.addEventListener("pointerlockchange", this.onLockChange);
-    document.addEventListener("click", this.onLockClick);
+    if (typeof document !== "undefined") {
+      document.addEventListener("keydown", this.onKeyDown);
+      document.addEventListener("keyup", this.onKeyUp);
+      document.addEventListener("mousemove", this.onMouseMove);
+      document.addEventListener("pointerlockchange", this.onLockChange);
+      document.addEventListener("click", this.onLockClick);
+    }
 
     this.spawn();
   }
 
+  isSolid(x, y, z) {
+    const b = this.world.getBlock(x, y, z);
+    return !NON_SOLID.has(b);
+  }
+
+  boxMinMax() {
+    const p = this.pos;
+    return {
+      x0: Math.floor(p.x - BODY_R), x1: Math.floor(p.x + BODY_R),
+      y0: Math.floor(p.y), y1: Math.floor(p.y + BODY_H),
+      z0: Math.floor(p.z - BODY_R), z1: Math.floor(p.z + BODY_R),
+    };
+  }
+
+  overlapsSolid() {
+    const m = this.boxMinMax();
+    for (let x = m.x0; x <= m.x1; x++)
+      for (let y = m.y0; y <= m.y1; y++)
+        for (let z = m.z0; z <= m.z1; z++)
+          if (this.isSolid(x, y, z)) return true;
+    return false;
+  }
+
   spawn() {
-    // find first air y at column, drop from top
-    for (let y = 60; y > 1; y--) {
+    // Search outward from the origin for an open, walkable landing spot:
+    // a ground block that is not under water and has clear airspace above.
+    const R = 6;
+    const ground = new Set([BLOCK.GRASS, BLOCK.DIRT, BLOCK.SAND, BLOCK.STONE, BLOCK.SANDSTONE, BLOCK.SNOW]);
+    for (let dx = -R; dx <= R; dx++) {
+      for (let dz = -R; dz <= R; dz++) {
+        const x = 8 + dx, z = 8 + dz;
+        for (let y = 68; y > 0; y--) {
+          const b = this.world.getBlock(x, y, z);
+          if (b === BLOCK.AIR || b === BLOCK.WATER || b === BLOCK.OAK_LEAVES) continue;
+          // first solid from top is the surface; accept if walkable + open air above
+          if (!ground.has(b)) break;
+          let clear = true;
+          for (let k = y + 1; k <= y + 6; k++) {
+            if (this.isSolid(x, k, z)) { clear = false; break; }
+          }
+          if (clear) {
+            this.pos.set(x + 0.5, y + 1.01, z + 0.5);
+            this.vel.set(0, 0, 0);
+            this.onGround = true;
+            return;
+          }
+          break; // solid but not clear (tree/overhang) - try next column
+        }
+      }
+    }
+    // fallback: stand on the highest solid at the origin column
+    for (let y = 68; y > 1; y--) {
       if (this.isSolid(Math.floor(this.pos.x), y, Math.floor(this.pos.z))) {
-        this.pos.y = y + 1 + 0.01;
+        this.pos.y = y + 1;
         break;
       }
     }
   }
 
-  isSolid(x, y, z) {
-    const b = this.world.getBlock(x, y, z);
-    return b !== BLOCK.AIR && b !== BLOCK.WATER;
-  }
-
-  collideAxis() {
-    // oob / simple per-axis resolution
-    const p = this.pos;
-    const r = 0.3;
-    const h = 1.78;
-    const minX = Math.floor(p.x - r);
-    const maxX = Math.floor(p.x + r);
-    const minZ = Math.floor(p.z - r);
-    const maxZ = Math.floor(p.z + r);
-    const bottom = Math.floor(p.y);
-    const top = Math.floor(p.y + h);
-    for (let y = bottom; y <= top; y++) {
-      for (let x = minX; x <= maxX; x++) {
-        for (let z = minZ; z <= maxZ; z++) {
-          if (this.isSolid(x, y, z)) {
-            // push up
-            if (p.y + h > y && p.y < y + 1) {
-              if (this.vel.y <= 0) {
-                p.y = y + 1;
-                this.vel.y = 0;
-                this.onGround = true;
-              }
-            }
-          }
-        }
-      }
+  moveAxis(axis, delta) {
+    if (delta === 0) return;
+    const prev = this.pos[axis];
+    this.pos[axis] += delta;
+    if (!this.overlapsSolid()) return;
+    // binary-search back to the first non-overlapping position (prevents embedding)
+    let lo = prev, hi = this.pos[axis];
+    for (let i = 0; i < 10; i++) {
+      const mid = (lo + hi) / 2;
+      this.pos[axis] = mid;
+      if (this.overlapsSolid()) hi = mid;
+      else lo = mid;
+    }
+    this.pos[axis] = lo;
+    if (axis === "y") {
+      if (delta < 0) { this.onGround = true; this.vel.y = 0; }
+      else this.vel.y = 0;
+    } else {
+      this.vel[axis] = 0;
     }
   }
 
@@ -93,7 +139,7 @@ export class Player {
     this.camera.rotation.y = this.yaw;
     this.camera.rotation.x = this.pitch;
 
-    // movement
+    // wish movement
     const forward = new THREE.Vector3(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
     const right = new THREE.Vector3(Math.cos(this.yaw), 0, -Math.sin(this.yaw));
     const wish = new THREE.Vector3();
@@ -105,16 +151,13 @@ export class Player {
 
     this.vel.x = wish.x;
     this.vel.z = wish.z;
-
-    // gravity + jump
     if (this.keys.has("Space") && this.onGround) this.vel.y = JUMP;
     this.vel.y += GRAVITY * dt;
-    this.pos.x += this.vel.x * dt;
-    this.pos.z += this.vel.z * dt;
-    this.pos.y += this.vel.y * dt;
 
     this.onGround = false;
-    this.collideAxis();
+    this.moveAxis("x", this.vel.x * dt);
+    this.moveAxis("z", this.vel.z * dt);
+    this.moveAxis("y", this.vel.y * dt);
 
     this.camera.position.copy(this.pos);
   }

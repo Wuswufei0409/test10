@@ -51,6 +51,23 @@ for (const vp of VIEWPORTS) {
   await page.waitForFunction(() => window.__voxel && window.__voxel.loadedChunks() > 30, { timeout: 20000 }).catch(() => {});
   await page.waitForTimeout(2000);
 
+  // verify clean spawn: not embedded, ground below, open air above/at feet
+  const spawnInfo = await page.evaluate(() => {
+    const v = window.__voxel;
+    const p = v.player;
+    return {
+      x: +p.pos.x.toFixed(1), y: +p.pos.y.toFixed(1), z: +p.pos.z.toFixed(1),
+      embedded: p.overlapsSolid(),
+      groundBelow: p.world.getBlock(Math.floor(p.pos.x), Math.floor(p.pos.y) - 1, Math.floor(p.pos.z)),
+      airAtFeet: p.isSolid(Math.floor(p.pos.x), Math.floor(p.pos.y), Math.floor(p.pos.z)),
+    };
+  });
+  console.log("spawn:", JSON.stringify(spawnInfo));
+  if (spawnInfo.embedded || spawnInfo.airAtFeet) {
+    console.error("SPAWN_BAD: player is embedded in or standing inside a solid block");
+    process.exitCode = 1;
+  }
+
   // stable average FPS over ~6s
   const fps = await page.evaluate(() => {
     return new Promise((resolve) => {
@@ -85,6 +102,20 @@ for (const vp of VIEWPORTS) {
     await page.screenshot({ path: fn, fullPage: false });
     globalErrors.push(...errors);
     console.log(`${stat}/${a.name} saved ${fn} (fps=${fps.avg.toFixed(1)}, loaded=${fps.loaded}, err=${errors.length})`);
+  }
+
+  // cross-chunk movement continuity: walk forward across chunk boundaries,
+  // capturing frames to prove no gaps/seams/floating terrain during motion
+  await page.evaluate(() => { const v = window.__voxel; v.player.yaw = 0.0; v.player.pitch = 0.0; });
+  for (let i = 0; i < 6; i++) {
+    await page.evaluate(() => { const v = window.__voxel; v.player.keys.add("KeyW"); });
+    await page.waitForTimeout(600);
+    await page.evaluate(() => { const v = window.__voxel; v.player.keys.delete("KeyW"); });
+    const mfn = join(outDir, `${stat}_move${i}.png`);
+    await page.screenshot({ path: mfn, fullPage: false });
+    const mi = await page.evaluate(() => { const v = window.__voxel; return { x:+v.player.pos.x.toFixed(1), y:+v.player.pos.y.toFixed(1), z:+v.player.pos.z.toFixed(1), emb:v.player.overlapsSolid() }; });
+    console.log(`${stat}/move${i} ${mfn} pos=${JSON.stringify(mi)}`);
+    if (mi.emb) globalErrors.push(`embedded at move${i}`);
   }
   await page.close();
 }

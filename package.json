@@ -10,13 +10,17 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "smoke": "node scripts/smoke.mjs",
-    "health": "node scripts/health.mjs"
+    "health": "node scripts/health.mjs",
+    "screenshot": "node scripts/screenshot.mjs"
   },
-"engines": { "node": ">=18" },
+  "engines": {
+    "node": ">=18"
+  },
   "dependencies": {
     "three": "^0.160.0"
   },
   "devDependencies": {
+    "playwright-core": "^1.63.0",
     "vite": "^5.0.0",
     "vitest": "^1.0.0"
   }
